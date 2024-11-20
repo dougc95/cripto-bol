@@ -1,77 +1,145 @@
-import "./App.css";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import axios from "axios";
 
 function App() {
-  const [buyPrice, setBuyPrice] = useState("...");
-  const [sellPrice, setSellPrice] = useState("...");
-  const [buyUSDPrice, setBuyUSDPrice] = useState("...");
+  const [data, setData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
+  const [modePrice, setModePrice] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const fetchData = async (tradeType) => {
-    const response = await fetch(`/api/proxy?tradeType=${tradeType}`);
-    const data = await response.json();
-    return data.data[tradeType == "BUY_USD" ? 1 : 4].adv.price;
+  const fetchBinanceP2P = async () => {
+    const url = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search";
+    const headers = {
+      "Content-Type": "application/json",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+      "Client-Type": "web",
+    };
+    const body = {
+      fiat: "BOB",
+      page: 1,
+      rows: 10,
+      tradeType: "BUY",
+      asset: "USDT",
+      countries: [],
+      payTypes: [],
+      proMerchantAds: false,
+      shieldMerchantAds: false,
+      filterType: "all",
+      periods: [],
+      additionalKycVerifyFilter: 0,
+      publisherType: null,
+      classifies: ["mass", "profession", "fiat_trade"],
+    };
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await axios.post(url, body, { headers });
+      const rawData = response.data.data || [];
+
+      // Calculate the average surplusAmount
+      const totalSurplus = rawData.reduce(
+        (sum, item) => sum + parseFloat(item.adv.surplusAmount),
+        0
+      );
+      const averageSurplus = totalSurplus / rawData.length;
+
+      // Filter items above or equal to the average surplusAmount and with a completion rate > 95%
+      const filtered = rawData.filter(
+        (item) =>
+          parseFloat(item.adv.surplusAmount) >= averageSurplus &&
+          parseFloat(item.advertiser.monthFinishRate) >= 0.95
+      );
+
+      // Extract prices and calculate the mode
+      const prices = filtered.map((item) => parseFloat(item.adv.price));
+      const priceFrequency = {};
+      prices.forEach((price) => {
+        priceFrequency[price] = (priceFrequency[price] || 0) + 1;
+      });
+      const mode = Object.keys(priceFrequency).reduce((a, b) =>
+        priceFrequency[a] > priceFrequency[b] ? a : b
+      );
+
+      // Update the state
+      setData(rawData);
+      setFilteredData(filtered);
+      setModePrice(mode);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const refreshData = async () => {
-    fetchData("BUY").then((price) => setBuyPrice(price));
-    fetchData("SELL").then((price) => setSellPrice(price));
-    fetchData("BUY_USD").then((price) => setBuyUSDPrice(price));
+  const redirectToBinance = () => {
+    window.open(
+      "https://p2p.binance.com/en/trade/all-payments/USDT?fiat=BOB",
+      "_blank"
+    );
   };
-
-  useEffect(() => {
-    refreshData();
-  }, []);
 
   return (
-    <main className="main">
-      <div className="grid">
-        <a
-          href="https://p2p.binance.com/en/trade/all-payments/USDT?fiat=BOB"
-          className="card"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>Buy</h2>
-          <p>
-            <strong>{buyPrice}</strong>{" "}
-            <span style={{ fontSize: "smaller" }}>BOB</span>
-          </p>
-        </a>
+    <div style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
+      <h1>Binance P2P Data</h1>
+      <button
+        onClick={fetchBinanceP2P}
+        style={{
+          padding: "10px 20px",
+          fontSize: "16px",
+          background: "#007bff",
+          color: "#fff",
+          border: "none",
+          borderRadius: "5px",
+          cursor: "pointer",
+        }}
+      >
+        Fetch P2P Offers
+      </button>
 
-        <a
-          href="https://p2p.binance.com/en/trade/sell/USDT?fiat=BOB&payment=all-payments"
-          className="card"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>Sell</h2>
-          <p>
-            <strong>{sellPrice}</strong>{" "}
-            <span style={{ fontSize: "smaller" }}>BOB</span>
-          </p>
-        </a>
+      {loading && <p>Loading...</p>}
+      {error && <p style={{ color: "red" }}>Error: {error}</p>}
 
-        <a
-          href="https://p2p.binance.com/en/trade/buy/USDT?fiat=USD&payment=BANK"
-          className="card"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>Buy</h2>
-          <p>
-            <strong>{buyUSDPrice}</strong>{" "}
-            <span style={{ fontSize: "smaller" }}>USD</span>
-          </p>
-        </a>
+      {filteredData.length > 0 && (
+        <div style={{ marginTop: "20px" }}>
+          <h2>
+            Filtered Results (Above Average Surplus Amount & Completion Rate >
+            95%):
+          </h2>
+          <ul>
+            {filteredData.map((item, index) => (
+              <li key={index}>
+                <strong>Price:</strong> {item.adv.price} BOB |{" "}
+                <strong>Surplus Amount:</strong> {item.adv.surplusAmount} USDT |{" "}
+                <strong>Completion Rate:</strong>{" "}
+                {item.advertiser.monthFinishRate * 100}%
+              </li>
+            ))}
+          </ul>
 
-        <a onClick={refreshData} className="card" style={{ cursor: "pointer" }}>
-          <h2>⟳</h2>
-          <p>
-            <span style={{ fontSize: "smaller" }}>refresh</span>
-          </p>
-        </a>
-      </div>
-    </main>
+          <h2>Mode Price: {modePrice} BOB</h2>
+
+          <button
+            onClick={redirectToBinance}
+            style={{
+              marginTop: "20px",
+              padding: "10px 20px",
+              fontSize: "16px",
+              background: "#28a745",
+              color: "#fff",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+            }}
+          >
+            Go to Binance
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
