@@ -1,3 +1,4 @@
+import PropTypes from "prop-types";
 import { PriceCard } from "../styles/styles";
 
 const PriceBox = ({ title, price }) => {
@@ -9,6 +10,15 @@ const PriceBox = ({ title, price }) => {
       </p>
     </PriceCard>
   );
+};
+
+PriceBox.propTypes = {
+  title: PropTypes.string.isRequired,
+  price: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+};
+
+PriceBox.defaultProps = {
+  price: "N/A",
 };
 
 export default PriceBox;
